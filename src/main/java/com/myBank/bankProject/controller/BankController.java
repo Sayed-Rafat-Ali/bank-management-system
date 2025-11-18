@@ -1,5 +1,6 @@
 package com.myBank.bankProject.controller;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import com.myBank.bankProject.service.BankService;
@@ -11,7 +12,8 @@ import java.util.List;
 @RequestMapping("/api/bank")
 public class BankController {
 
-    BankService bank = new BankService();
+	  @Autowired
+	    private BankService bank;   // <-- CORRECT INJECTION (fixed)
 
     @PostMapping("/create")
     public String create(

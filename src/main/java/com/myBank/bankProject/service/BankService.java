@@ -1,27 +1,30 @@
 package com.myBank.bankProject.service;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.List;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.myBank.bankProject.config.DB;
+import javax.sql.DataSource;
+
 import com.myBank.bankProject.model.Account;
 import com.myBank.bankProject.model.CurrentAccount;
 import com.myBank.bankProject.model.SavingAccount;
 
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
 @Service
 public class BankService {
 
+    @Autowired
+    private DataSource dataSource;   // Spring Boot DB connection
+
     // Create Account
     public void createAccount(String name, String phone, double bal, String pin, String type) {
-        try (Connection con = DB.getConnection()) {
+        String q = "INSERT INTO accounts(name, phone, pin, balance, type) VALUES (?,?,?,?,?)";
 
-            String q = "INSERT INTO accounts(name, phone, pin, balance, type) VALUES (?,?,?,?,?)";
-            PreparedStatement ps = con.prepareStatement(q);
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
 
             ps.setString(1, name);
             ps.setString(2, phone);
@@ -33,8 +36,6 @@ public class BankService {
 
             addTransaction(phone, "DEPOSIT", bal);
 
-            System.out.println("Account Created Successfully");
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -42,11 +43,10 @@ public class BankService {
 
     // Validate Login
     public boolean validateLogin(String phone, String pin) {
-        try (Connection con = DB.getConnection()) {
+        String q = "SELECT 1 FROM accounts WHERE phone=? AND pin=?";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT 1 FROM accounts WHERE phone=? AND pin=?"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
 
             ps.setString(1, phone);
             ps.setString(2, pin);
@@ -62,13 +62,12 @@ public class BankService {
 
     // Get Balance
     public double getBalance(String phone) {
-        try (Connection con = DB.getConnection()) {
+        String q = "SELECT balance FROM accounts WHERE phone=?";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT balance FROM accounts WHERE phone=?"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
+
             ps.setString(1, phone);
-
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) return rs.getDouble("balance");
@@ -81,14 +80,13 @@ public class BankService {
 
     // Update Balance
     public void updateBalance(String phone, double newBal) {
-        try (Connection con = DB.getConnection()) {
+        String q = "UPDATE accounts SET balance=? WHERE phone=?";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "UPDATE accounts SET balance=? WHERE phone=?"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
+
             ps.setDouble(1, newBal);
             ps.setString(2, phone);
-
             ps.executeUpdate();
 
         } catch (Exception e) {
@@ -103,8 +101,6 @@ public class BankService {
 
         updateBalance(phone, bal);
         addTransaction(phone, "DEPOSIT", amt);
-
-        System.out.println("Amount Deposited!");
     }
 
     // Withdraw
@@ -122,11 +118,10 @@ public class BankService {
 
     // Add Transaction
     public void addTransaction(String phone, String type, double amt) {
-        try (Connection con = DB.getConnection()) {
+        String q = "INSERT INTO transactions(phone, type, amount) VALUES (?,?,?)";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO transactions(phone, type, amount) VALUES (?,?,?)"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
 
             ps.setString(1, phone);
             ps.setString(2, type);
@@ -139,17 +134,15 @@ public class BankService {
         }
     }
 
-    // Get Transaction History
+    // Get transactions
     public List<String> getTransactions(String phone) {
         List<String> list = new ArrayList<>();
+        String q = "SELECT * FROM transactions WHERE phone=? ORDER BY date DESC";
 
-        try (Connection con = DB.getConnection()) {
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT * FROM transactions WHERE phone=? ORDER BY date DESC"
-            );
             ps.setString(1, phone);
-
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
@@ -167,15 +160,14 @@ public class BankService {
         return list;
     }
 
-    // Fetch Full Account
+    // Get full account
     public Account getAccount(String phone) {
-        try (Connection con = DB.getConnection()) {
+        String q = "SELECT * FROM accounts WHERE phone=?";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT * FROM accounts WHERE phone=?"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
+
             ps.setString(1, phone);
-
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
@@ -207,45 +199,26 @@ public class BankService {
 
     // Apply Monthly Interest
     public void applyMonthlyInterest(String phone) {
-        try (Connection con = DB.getConnection()) {
+        String q = "SELECT balance, type FROM accounts WHERE phone=?";
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT balance, type FROM accounts WHERE phone=?"
-            );
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
+
             ps.setString(1, phone);
-
             ResultSet rs = ps.executeQuery();
 
-            if (!rs.next()) {
-                System.out.println("Account not found!");
-                return;
-            }
+            if (!rs.next()) return;
 
-            double balance = rs.getDouble("balance");
+            double bal = rs.getDouble("balance");
             String type = rs.getString("type");
 
-            if (!type.equalsIgnoreCase("SAVING")) {
-                System.out.println("Interest applies only to Saving Accounts!");
-                return;
-            }
+            if (!type.equalsIgnoreCase("SAVING")) return;
 
-            double rate = 0.04;
-            double monthlyInterest = balance * (rate / 12);
+            double interest = bal * (0.04 / 12);
+            double newBal = bal + interest;
 
-            double newBalance = balance + monthlyInterest;
-
-            PreparedStatement ps2 = con.prepareStatement(
-                    "UPDATE accounts SET balance=? WHERE phone=?"
-            );
-
-            ps2.setDouble(1, newBalance);
-            ps2.setString(2, phone);
-
-            ps2.executeUpdate();
-
-            addTransaction(phone, "INTEREST", monthlyInterest);
-
-            System.out.println("Interest Applied Successfully");
+            updateBalance(phone, newBal);
+            addTransaction(phone, "INTEREST", interest);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -255,38 +228,34 @@ public class BankService {
     // Transfer Money
     public boolean transferMoney(String senderPhone, String receiverPhone, double amount) {
 
-        String debitQuery = "UPDATE accounts SET balance = balance - ? WHERE phone = ?";
-        String creditQuery = "UPDATE accounts SET balance = balance + ? WHERE phone = ?";
-        String txQuery = "INSERT INTO transactions(phone, type, amount) VALUES (?,?,?)";
+        String debit = "UPDATE accounts SET balance = balance - ? WHERE phone = ?";
+        String credit = "UPDATE accounts SET balance = balance + ? WHERE phone = ?";
+        String tx = "INSERT INTO transactions(phone, type, amount) VALUES (?,?,?)";
 
-        try (Connection con = DB.getConnection()) {
+        try (Connection con = dataSource.getConnection()) {
 
             double senderBal = getBalance(senderPhone);
+            if (senderBal < amount) return false;
 
-            if (senderBal < amount) {
-                System.out.println("Insufficient Balance!");
-                return false;
-            }
+            con.setAutoCommit(false);
 
-            con.setAutoCommit(false); // start transaction
-
-            PreparedStatement ps1 = con.prepareStatement(debitQuery);
+            PreparedStatement ps1 = con.prepareStatement(debit);
             ps1.setDouble(1, amount);
             ps1.setString(2, senderPhone);
             ps1.executeUpdate();
 
-            PreparedStatement ps2 = con.prepareStatement(creditQuery);
+            PreparedStatement ps2 = con.prepareStatement(credit);
             ps2.setDouble(1, amount);
             ps2.setString(2, receiverPhone);
             ps2.executeUpdate();
 
-            PreparedStatement ps3 = con.prepareStatement(txQuery);
+            PreparedStatement ps3 = con.prepareStatement(tx);
             ps3.setString(1, senderPhone);
             ps3.setString(2, "TRANSFER OUT");
             ps3.setDouble(3, amount);
             ps3.executeUpdate();
 
-            PreparedStatement ps4 = con.prepareStatement(txQuery);
+            PreparedStatement ps4 = con.prepareStatement(tx);
             ps4.setString(1, receiverPhone);
             ps4.setString(2, "TRANSFER IN");
             ps4.setDouble(3, amount);
@@ -303,12 +272,11 @@ public class BankService {
 
     // Change PIN
     public boolean changePin(String phone, String oldPin, String newPin) {
+        String q = "SELECT pin FROM accounts WHERE phone=? AND pin=?";
 
-        try (Connection con = DB.getConnection()) {
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(q)) {
 
-            PreparedStatement ps = con.prepareStatement(
-                    "SELECT pin FROM accounts WHERE phone=? AND pin=?"
-            );
             ps.setString(1, phone);
             ps.setString(2, oldPin);
 
@@ -322,7 +290,6 @@ public class BankService {
 
             ps2.setString(1, newPin);
             ps2.setString(2, phone);
-
             ps2.executeUpdate();
 
             return true;
