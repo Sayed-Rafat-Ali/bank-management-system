@@ -17,7 +17,7 @@ import java.util.List;
 public class BankService {
 
     @Autowired
-    private DataSource dataSource;   // Spring Boot DB connection
+    private DataSource dataSource;   // <-- Spring Boot provides DB connection
 
     // Create Account
     public void createAccount(String name, String phone, double bal, String pin, String type) {
